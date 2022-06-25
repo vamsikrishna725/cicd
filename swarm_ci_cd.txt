@@ -1,0 +1,66 @@
+2) Setup ci/cd (jenkins server)
+=====install java,jenkins,docker in ubuntu machine==========
+sudo apt update -y
+sudo apt install openjdk-8-jdk -y
+wget -q -O - https://pkg.jenkins.io/debian/jenkins.io.key | sudo apt-key add -
+sudo sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+sudo apt-get update -y
+sudo apt-get install jenkins -y
+sudo systemctl status jenkins
+==============================
+3) Installation of docker
+ sudo curl -fsSL get.docker.com | /bin/bash
+
+#Add jenkins user to docker group 
+sudo usermod -aG docker jenkins
+#Restart jenkins to reflect docker permissions
+sudo systemctl restart jenkins
+
+#use below commands if you want to switch to jenkins user.
+
+sudo -i -u jenkins
+sudo su -s /bin/bash jenkins
+
+##################################################
+
+#Plugins used 
+
+sshAgent
+===========================================================
+1)open jenkins create a pipeline job (java-web-app-docker-swarm) 
+
+Maven-3.8.5
+====================================================================================================
+node{
+    stage("Git Clone"){
+        ///git branch: 'master', url: 'https://github.com/vamsikrishna725/cicd.git'
+        git branch: 'master',credentialsId: '886876fd-6d44-4f14-b509-c033babaf530', url: 'https://github.com/vamsikrishna725/cicd.git'
+    }
+    stage("Maven clean package"){
+        def mavenHome= tool name: "Maven-3.8.5", type: "maven"
+        def mavenCMD="${mavenHome}/bin/mvn"
+        sh "${mavenCMD} clean package"
+    }
+    
+    stage("Build Docker Image"){
+        sh "docker build vamsikrish725/java-web-app: ."
+    }
+    stage("Push Docker Image"){
+        withCredentials([string(credentialsId: 'Docker_Hub_Pwd', variable: 'Docker_Hub_Pwd')]) {
+           sh "docker login -u vamsikrish725 -p ${Docker_Hub_Pwd}"
+        }
+
+        sh "docker push vamsikrish725/java-web-app:1.0"
+
+    }
+    
+stage("Remove Local Image"){
+        sh "docker rmi -f java-web-app"
+    }
+    
+    stage("Deploy to docker swarm cluster"){
+        sshagent(['Docker_Swarm_Manager_SSh']) {
+          sh "ssh -o StrictHostKeyChecking=no ubuntu@172.31.84.33 docker service rm javawebapp || true"
+          sh "ssh ubuntu@172.31.84.33 docker service create --name javawebapp -p 8080:8080 --replicas 2 vamsikrish725/java-web-app "    
+    
+}
